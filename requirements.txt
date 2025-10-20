@@ -1,0 +1,8 @@
+torch
+facenet-pytorch
+flask
+python-dotenv
+scikit-learn
+joblib
+pillow
+numpy
