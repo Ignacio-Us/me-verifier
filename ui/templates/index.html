@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Face Verifier</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1>Face Verifier 🧠</h1>
+    <form method="POST" enctype="multipart/form-data">
+      <input type="file" name="file" accept="image/*" required />
+      <br>
+      <button type="submit">Verificar</button>
+    </form>
+
+    {% if prediction %}
+      <div class="result">
+        <h2>Resultado: {{ prediction }}</h2>
+        {% if confidence %}
+          <p>Confianza: {{ '%.2f'|format(confidence * 100) }}%</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>
