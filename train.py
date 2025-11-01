@@ -7,7 +7,7 @@ from pathlib import Path
 
 # === Paths ===
 EMBEDDINGS_PATH = Path("models/embeddings.joblib")
-MODEL_PATH = Path("models/model.joblib")
+MODEL_PATH = Path("models/model_verifier.joblib")
 SCALER_PATH = Path("models/scaler.joblib")
 
 # === 1. Cargar embeddings ===

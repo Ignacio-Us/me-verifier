@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 # === Paths ===
-MODEL_PATH = Path("models/model.joblib")
+MODEL_PATH = Path("models/model_verifier.joblib")
 SCALER_PATH = Path("models/scaler.joblib")
 EMBEDDINGS_PATH = Path("models/embeddings.joblib")
 REPORTS_DIR = Path("reports")
