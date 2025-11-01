@@ -1,5 +1,5 @@
 import os
-from PIL import Image
+from PIL import Image, ImageOps
 from facenet_pytorch import MTCNN
 from pathlib import Path
 import numpy as np
@@ -21,11 +21,13 @@ for input_dir in INPUT_DIRS:
         img_path = Path(input_dir) / img_name
         try:
             img = Image.open(img_path).convert("RGB")
+            img = ImageOps.exif_transpose(img)  # Corrige orientación antes de pasar al detector
             face = mtcnn(img)
 
             if face is not None:
-                # Convertir tensor [3,160,160] -> imagen RGB uint8
-                face_np = face.permute(1, 2, 0).clamp(0, 1).mul(255).byte().numpy()
+                # Normaliza valores dinámicamente para evitar imágenes oscuras
+                face_np = face.permute(1, 2, 0).cpu().numpy()
+                face_np = ((face_np - face_np.min()) / (face_np.max() - face_np.min()) * 255).astype(np.uint8)
                 face_img = Image.fromarray(face_np)
 
                 out_path = output_subdir / img_name
