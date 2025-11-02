@@ -1,8 +1,7 @@
 import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
-# from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression
 from pathlib import Path
 
 # === Paths ===
@@ -28,8 +27,7 @@ X_val_scaled = scaler.transform(X_val)
 
 # === 4. Inicializar y entrenar modelo ===
 print("[INFO] Entrenando modelo...")
-model = SVC(kernel="linear", probability=True)
-# model = LogisticRegression(max_iter=1000, solver="lbfgs")
+model = LogisticRegression(max_iter=300, random_state=42, class_weight="balanced")
 model.fit(X_train_scaled, y_train)
 
 print("[OK] Modelo entrenado correctamente")
@@ -43,3 +41,8 @@ joblib.dump(scaler, SCALER_PATH)
 
 print(f"[OK] Modelo guardado en {MODEL_PATH}")
 print(f"[OK] Scaler guardado en {SCALER_PATH}")
+
+# === 6. Guardar conjunto de validación para evaluación futura ===
+VAL_PATH = Path("models/val_data.joblib")
+joblib.dump((X_val, y_val), VAL_PATH)
+print(f"[OK] Conjunto de validación guardado en {VAL_PATH}")

@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MODEL_PATH = os.getenv("MODEL_PATH", "models/model.joblib")
-SCALER_PATH = os.getenv("SCALER_PATH", "models/scaler.joblib")
 THRESHOLD = float(os.getenv("THRESHOLD", 0.7))  # valor por defecto 0.7
 PORT = int(os.getenv("PORT", 8500))
 
@@ -23,7 +22,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # === Cargar modelo y scaler ===
 model = joblib.load(MODEL_PATH)
-scaler = joblib.load(SCALER_PATH)
+scaler = joblib.load("models/scaler.joblib")
 
 # === Modelo de embeddings ===
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
