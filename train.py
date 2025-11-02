@@ -27,7 +27,7 @@ X_val_scaled = scaler.transform(X_val)
 
 # === 4. Inicializar y entrenar modelo ===
 print("[INFO] Entrenando modelo...")
-model = LogisticRegression(max_iter=300, random_state=42, class_weight="balanced")
+model = LogisticRegression(max_iter=300, solver='lbfgs', class_weight="balanced")
 model.fit(X_train_scaled, y_train)
 
 print("[OK] Modelo entrenado correctamente")
