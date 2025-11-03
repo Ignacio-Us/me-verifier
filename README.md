@@ -3,10 +3,6 @@
 Sistema de **verificación de identidad facial** basado en embeddings faciales y aprendizaje automático (Logistic Regression).  
 El proyecto permite detectar, recortar rostros, generar embeddings con una red preentrenada y clasificar si una imagen corresponde (“ME” vs “NOT ME”).
 
-## Versiones recomendada para python
-
-Python 3.11 o 3.12
-
 ## Estructura del proyecto
 
 ``` 
@@ -120,3 +116,10 @@ me-verifier/
     ```
 
     Inicia el servidor Flask con o sin Gunicorn para realizar predicciones sobre nuevas imágenes.
+
+6. Despliegue de API Flask (OPCIONAL)
+     ```
+     python api/app.py
+     ```
+
+     Inicia la API con Flask.
