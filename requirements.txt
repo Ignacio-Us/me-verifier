@@ -5,6 +5,6 @@ python-dotenv
 scikit-learn
 joblib
 pillow
-numpy
+numpy>=2.3.0
 seaborn
 matplotlib
