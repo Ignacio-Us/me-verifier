@@ -1,0 +1,13 @@
+torch
+facenet-pytorch
+flask
+python-dotenv
+scikit-learn
+joblib
+pillow
+numpy>=2.3.0
+seaborn
+matplotlib
+requests
+pytest
+gunicorn
