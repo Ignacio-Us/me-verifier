@@ -8,3 +8,5 @@ pillow
 numpy>=2.3.0
 seaborn
 matplotlib
+requests
+pytest
