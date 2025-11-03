@@ -49,8 +49,25 @@ for class_dir in ["me", "not_me"]:
             embeddings.append(embedding)
             records.append({
                 "filename": img_path.name,
-                "label": label,
-                "class": class_dir
+                "label": label
+            })
+            print(f"[OK] {img_path.name} -> embedding generado")
+
+        except Exception as e:
+            print(f"[ERROR] {img_path.name}: {e}")
+
+    for img_path in img_dir.glob("*.jpeg"):
+        try:
+            img = Image.open(img_path).convert("RGB")
+            tensor = transform(img).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                embedding = model(tensor).cpu().numpy().flatten()
+
+            embeddings.append(embedding)
+            records.append({
+                "filename": img_path.name,
+                "label": label
             })
             print(f"[OK] {img_path.name} -> embedding generado")
 

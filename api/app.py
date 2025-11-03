@@ -1,78 +1,138 @@
-from flask import Flask, request, jsonify
 import os
-from dotenv import load_dotenv
+import io
+import json
+import time
 import joblib
 import numpy as np
+from flask import Flask, request, jsonify
+from facenet_pytorch import InceptionResnetV1, MTCNN
 from PIL import Image
-from io import BytesIO
-import base64
+import torch
+from pathlib import Path
 
-# === Cargar variables del archivo .env ===
-load_dotenv()
-
-MODEL_PATH = os.getenv("MODEL_PATH", "models/model_verifier.joblib")
-THRESHOLD = float(os.getenv("THRESHOLD", 0.6))
-PORT = int(os.getenv("PORT", 5813))
-MAX_MB = int(os.getenv("MAX_MB", 8))
-
-# === Inicializar Flask ===
+# === Configuración general ===
 app = Flask(__name__)
 
-# === Cargar modelo ===
-try:
-    model = joblib.load(MODEL_PATH)
-except Exception as e:
-    raise RuntimeError(f"Error cargando modelo desde {MODEL_PATH}: {e}")
+MODEL_VERSION = "me-verifier-v1"
+MODELS_DIR = Path("models")
+REPORTS_DIR = Path("reports")
+DEFAULT_THRESHOLD = float(os.getenv("THRESHOLD", 0.75))
+MAX_FILE_SIZE_MB = 5
+ALLOWED_EXTENSIONS = {"image/jpg", "image/png"}
 
-# === Validadores ===
-def validate_image(request):
-    if "image" not in request.files:
-        return False, "No se encontró archivo 'image' en la solicitud."
+# === Cargar modelo, scaler y red de embeddings ===
+print("[INFO] Cargando modelo y scaler...")
+model = joblib.load(MODELS_DIR / "model.joblib")
+scaler = joblib.load(MODELS_DIR / "scaler.joblib")
 
-    file = request.files["image"]
-    if file.filename == "":
-        return False, "El archivo está vacío."
+print("[INFO] Inicializando red InceptionResnetV1 + MTCNN...")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+embedder = InceptionResnetV1(pretrained="vggface2").eval().to(device)
+mtcnn = MTCNN(image_size=160, margin=20, device=device)
+
+# === Leer umbral óptimo si existe ===
+metrics_path = REPORTS_DIR / "metrics_eval.json"
+if metrics_path.exists():
+    try:
+        with open(metrics_path, "r") as f:
+            metrics = json.load(f)
+            THRESHOLD = float(metrics.get("best_threshold", DEFAULT_THRESHOLD))
+        print(f"[INFO] Umbral óptimo cargado: τ={THRESHOLD:.4f}")
+    except Exception as e:
+        print(f"[WARN] No se pudo leer metrics_eval.json: {e}")
+        THRESHOLD = DEFAULT_THRESHOLD
+else:
+    THRESHOLD = DEFAULT_THRESHOLD
+    print(f"[INFO] Umbral por defecto usado: τ={THRESHOLD:.4f}")
+
+
+# === Funciones auxiliares ===
+def validate_image(file):
+    """Valida tipo MIME y tamaño del archivo."""
+    if file.mimetype not in ALLOWED_EXTENSIONS:
+        return False, "solo image/jpg o image/png"
 
     file.seek(0, os.SEEK_END)
-    file_size_mb = file.tell() / (1024 * 1024)
+    size_mb = file.tell() / (1024 * 1024)
     file.seek(0)
 
-    if file_size_mb > MAX_MB:
-        return False, f"El archivo supera el límite de {MAX_MB} MB."
+    if size_mb > MAX_FILE_SIZE_MB:
+        return False, f"archivo demasiado grande ({size_mb:.2f} MB > {MAX_FILE_SIZE_MB} MB)"
 
-    return True, file
+    return True, None
+
+
+def get_embedding(image: Image.Image):
+    """Obtiene embedding facial 512-D de una imagen."""
+    face = mtcnn(image)
+    if face is None:
+        raise ValueError("No se detectó ningún rostro.")
+    with torch.no_grad():
+        emb = embedder(face.unsqueeze(0).to(device)).cpu().numpy()
+    return emb
+
 
 # === Endpoint de salud ===
-@app.route("/health", methods=["GET"])
+@app.route("/healthz", methods=["GET"])
 def healthz():
-    return jsonify({"status": "ok", "model_loaded": MODEL_PATH}), 200
-
-# === Endpoint principal ===
-@app.route("/verify", methods=["POST"])
-def verify():
-    valid, result = validate_image(request)
-    if not valid:
-        return jsonify({"error": result}), 400
-
-    file = result
-    image = Image.open(file.stream).convert("RGB")
-
-    # TODO: Aquí iría el cálculo de embeddings con facenet-pytorch
-    # por ahora usaremos un vector simulado
-    embedding = np.random.rand(512)  # placeholder
-
-    # Clasificación o distancia con el modelo entrenado
-    prediction = model.predict([embedding])[0]
-    confidence = np.random.random()  # placeholder
-
-    verified = confidence >= THRESHOLD
-
+    """Endpoint simple para verificar el estado del modelo."""
     return jsonify({
-        "verified": bool(verified),
-        "confidence": round(float(confidence), 4),
-        "threshold": THRESHOLD
+        "status": "ok",
+        "model_version": MODEL_VERSION,
+        "device": device
     }), 200
 
-# === Ejecutar la app ===
+
+# === Endpoint principal /verify ===
+@app.route("/verify", methods=["POST"])
+def verify():
+    start_time = time.time()
+
+    # Validar que se haya enviado un archivo
+    if "image" not in request.files:
+        return jsonify({"error": "no se envió ningún archivo"}), 400
+
+    file = request.files["image"]
+
+    # Validar tipo y tamaño
+    valid, error_msg = validate_image(file)
+    if not valid:
+        return jsonify({"error": error_msg}), 400
+
+    try:
+        # Leer imagen
+        img_bytes = file.read()
+        image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+        # Extraer embedding
+        embedding = get_embedding(image)
+        embedding_scaled = scaler.transform(embedding)
+
+        # Calcular probabilidad de "me"
+        prob = model.predict_proba(embedding_scaled)[0, 1]
+        is_me = prob >= THRESHOLD
+
+        # Tiempo total de inferencia
+        timing_ms = (time.time() - start_time) * 1000
+
+        # Construir respuesta
+        response = {
+            "model_version": MODEL_VERSION,
+            "is_me": bool(is_me),
+            "score": round(float(prob), 4),
+            "threshold": round(float(THRESHOLD), 4),
+            "timing_ms": round(float(timing_ms), 1)
+        }
+
+        return jsonify(response), 200
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        return jsonify({"error": "error interno en el procesamiento"}), 500
+
+
+# === Ejecutar aplicación localmente ===
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
