@@ -2,10 +2,10 @@
 
 # === 1. Verificar si existe archivo .env ===
 if [ -f .env ]; then
-  echo "📦 Cargando variables de entorno desde .env..."
+  echo "[INFO] Cargando variables de entorno desde .env..."
   export $(grep -v '^#' .env | xargs)
 else
-  echo "⚠️  No se encontró el archivo .env. Usando valores por defecto."
+  echo "[WARN] No se encontró el archivo .env. Usando valores por defecto."
 fi
 
 # === 2. Configuración por defecto (si alguna variable no está en .env) ===
@@ -22,7 +22,7 @@ mkdir -p logs
 
 # === 5. Mostrar configuración ===
 echo "=========================================="
-echo "🚀 Iniciando Gunicorn con configuración:"
+echo "[INFO] Iniciando Gunicorn con configuración:"
 echo "App:         $APP_MODULE"
 echo "Host:        $HOST"
 echo "Port:        $PORT"
