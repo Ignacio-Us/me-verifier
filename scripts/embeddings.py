@@ -3,31 +3,42 @@ from facenet_pytorch import InceptionResnetV1
 from PIL import Image
 from torchvision import transforms
 from pathlib import Path
-import joblib
 import numpy as np
+import pandas as pd
 
+# === Paths ===
 DATA_DIR = Path("data/cropped")
-OUTPUT_PATH = Path("models/embeddings.joblib")
+OUTPUT_DIR = Path("models")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Transformaciones para InceptionResnetV1
+EMBEDDINGS_PATH = OUTPUT_DIR / "embeddings.npy"
+LABELS_CSV_PATH = OUTPUT_DIR / "labels.csv"
+
+# === Transformaciones para el modelo ===
 transform = transforms.Compose([
     transforms.Resize((160, 160)),
     transforms.ToTensor(),
     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
 ])
 
-# Cargar modelo preentrenado de FaceNet (VGGFace2)
+# === Modelo FaceNet (VGGFace2 preentrenado) ===
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = InceptionResnetV1(pretrained="vggface2").eval().to(device)
 
-X, y = [], []
+# === Contenedores ===
+embeddings = []
+records = []
 
-# Recorremos las carpetas me/ y not_me/
+# === Recorremos las carpetas 'me' y 'not_me' ===
 for class_dir in ["me", "not_me"]:
     label = 1 if class_dir == "me" else 0
-    image_dir = DATA_DIR / class_dir
+    img_dir = DATA_DIR / class_dir
 
-    for img_path in image_dir.glob("*.jpg"):
+    if not img_dir.exists():
+        print(f"[WARN] Directorio no encontrado: {img_dir}")
+        continue
+
+    for img_path in img_dir.glob("*.jpg"):
         try:
             img = Image.open(img_path).convert("RGB")
             tensor = transform(img).unsqueeze(0).to(device)
@@ -35,17 +46,24 @@ for class_dir in ["me", "not_me"]:
             with torch.no_grad():
                 embedding = model(tensor).cpu().numpy().flatten()
 
-            X.append(embedding)
-            y.append(label)
+            embeddings.append(embedding)
+            records.append({
+                "filename": img_path.name,
+                "label": label,
+                "class": class_dir
+            })
             print(f"[OK] {img_path.name} -> embedding generado")
 
         except Exception as e:
             print(f"[ERROR] {img_path.name}: {e}")
 
-# Guardamos embeddings y etiquetas
-X, y = np.array(X), np.array(y)
-OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-joblib.dump((X, y), OUTPUT_PATH)
+# === Convertir y guardar ===
+embeddings = np.array(embeddings, dtype=np.float32)
+labels_df = pd.DataFrame(records)
 
-print(f"\n✅ Embeddings guardados en {OUTPUT_PATH}")
-print(f"Total muestras: {len(X)}")
+np.save(EMBEDDINGS_PATH, embeddings)
+labels_df.to_csv(LABELS_CSV_PATH, index=False)
+
+print("\n[OK] Embeddings y etiquetas guardadas correctamente")
+print(f"Embeddings: {EMBEDDINGS_PATH} (shape={embeddings.shape})")
+print(f"Etiquetas:  {LABELS_CSV_PATH} (total={len(labels_df)})")
