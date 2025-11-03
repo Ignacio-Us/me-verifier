@@ -1,4 +1,3 @@
-import os
 import io
 import json
 import time
@@ -9,48 +8,41 @@ from facenet_pytorch import InceptionResnetV1, MTCNN
 from PIL import Image
 import torch
 from pathlib import Path
+from dotenv import load_dotenv
+import os
+
+# === Cargar variables de entorno ===
+load_dotenv()
 
 # === Configuración general ===
 app = Flask(__name__)
 
-MODEL_VERSION = "me-verifier-v1"
-MODELS_DIR = Path("models")
-REPORTS_DIR = Path("reports")
+MODEL_PATH = Path(os.getenv("MODEL_PATH", "models/model.joblib"))
+SCALER_PATH = MODEL_PATH.parent / "scaler.joblib"  # se asume en la misma carpeta
 DEFAULT_THRESHOLD = float(os.getenv("THRESHOLD", 0.75))
-MAX_FILE_SIZE_MB = 5
-ALLOWED_EXTENSIONS = {"image/jpg", "image/png"}
+PORT = int(os.getenv("PORT", 8000))
+MAX_FILE_SIZE_MB = float(os.getenv("MAX_MB", 5))
+ALLOWED_EXTENSIONS = {"image/jpg", "image/jpeg", "image/png"}
 
 # === Cargar modelo, scaler y red de embeddings ===
 print("[INFO] Cargando modelo y scaler...")
-model = joblib.load(MODELS_DIR / "model.joblib")
-scaler = joblib.load(MODELS_DIR / "scaler.joblib")
+model = joblib.load(MODEL_PATH)
+scaler = joblib.load(SCALER_PATH)
 
 print("[INFO] Inicializando red InceptionResnetV1 + MTCNN...")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 embedder = InceptionResnetV1(pretrained="vggface2").eval().to(device)
 mtcnn = MTCNN(image_size=160, margin=20, device=device)
 
-# === Leer umbral óptimo si existe ===
-metrics_path = REPORTS_DIR / "metrics_eval.json"
-if metrics_path.exists():
-    try:
-        with open(metrics_path, "r") as f:
-            metrics = json.load(f)
-            THRESHOLD = float(metrics.get("best_threshold", DEFAULT_THRESHOLD))
-        print(f"[INFO] Umbral óptimo cargado: τ={THRESHOLD:.4f}")
-    except Exception as e:
-        print(f"[WARN] No se pudo leer metrics_eval.json: {e}")
-        THRESHOLD = DEFAULT_THRESHOLD
-else:
-    THRESHOLD = DEFAULT_THRESHOLD
-    print(f"[INFO] Umbral por defecto usado: τ={THRESHOLD:.4f}")
+THRESHOLD = DEFAULT_THRESHOLD
+print(f"[INFO] Umbral configurado: τ={THRESHOLD:.4f}")
 
 
 # === Funciones auxiliares ===
 def validate_image(file):
     """Valida tipo MIME y tamaño del archivo."""
     if file.mimetype not in ALLOWED_EXTENSIONS:
-        return False, "solo image/jpg o image/png"
+        return False, "solo image/jpg, image/jpeg o image/png son permitidos"
 
     file.seek(0, os.SEEK_END)
     size_mb = file.tell() / (1024 * 1024)
@@ -58,7 +50,6 @@ def validate_image(file):
 
     if size_mb > MAX_FILE_SIZE_MB:
         return False, f"archivo demasiado grande ({size_mb:.2f} MB > {MAX_FILE_SIZE_MB} MB)"
-
     return True, None
 
 
@@ -75,11 +66,11 @@ def get_embedding(image: Image.Image):
 # === Endpoint de salud ===
 @app.route("/healthz", methods=["GET"])
 def healthz():
-    """Endpoint simple para verificar el estado del modelo."""
     return jsonify({
         "status": "ok",
-        "model_version": MODEL_VERSION,
-        "device": device
+        "device": device,
+        "threshold": THRESHOLD,
+        "model_path": str(MODEL_PATH)
     }), 200
 
 
@@ -115,16 +106,12 @@ def verify():
         # Tiempo total de inferencia
         timing_ms = (time.time() - start_time) * 1000
 
-        # Construir respuesta
-        response = {
-            "model_version": MODEL_VERSION,
+        return jsonify({
             "is_me": bool(is_me),
             "score": round(float(prob), 4),
             "threshold": round(float(THRESHOLD), 4),
             "timing_ms": round(float(timing_ms), 1)
-        }
-
-        return jsonify(response), 200
+        }), 200
 
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -135,4 +122,4 @@ def verify():
 
 # === Ejecutar aplicación localmente ===
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    app.run(host="0.0.0.0", port=PORT)
